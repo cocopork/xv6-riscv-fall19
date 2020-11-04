@@ -12,7 +12,6 @@ grep(char *pattern, int fd)
 {
   int n, m;
   char *p, *q;
-
   m = 0;
   while((n = read(fd, buf+m, sizeof(buf)-m-1)) > 0){
     m += n;
