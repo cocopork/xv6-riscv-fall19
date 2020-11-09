@@ -274,6 +274,7 @@ gettoken(char **ps, char *es, char **q, char **eq)
   if(q)
     *q = s;
   ret = *s;
+  //采集从一个边界到下一个边界之间的词语,q是词头，eq是词尾
   switch(*s){
   case 0:
     break;
@@ -300,7 +301,7 @@ gettoken(char **ps, char *es, char **q, char **eq)
   }
   if(eq)
     *eq = s;
-
+  //ps继续往下走
   while(s < es && strchr(whitespace, *s))
     s++;
   *ps = s;
@@ -313,6 +314,7 @@ peek(char **ps, char *es, char *toks)
   char *s;
 
   s = *ps;
+  //指令头指针不断跳过空白
   while(s < es && strchr(whitespace, *s))
     s++;
   *ps = s;
