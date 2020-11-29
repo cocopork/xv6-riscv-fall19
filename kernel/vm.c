@@ -15,7 +15,7 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-void print(pagetable_t);
+void vmprint(pagetable_t pagetable);
 
 /*
  * create a direct-map page table for the kernel and
@@ -95,6 +95,28 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   return &pagetable[PX(0, va)];
 }
 
+void recursion_print(pagetable_t pagetable ,int level){
+  
+  for(int i=0;i<512;i++){
+    pte_t pte = pagetable[i];
+    if(pte&PTE_V){
+      for(int j=0;j<level;j++){
+        printf(" ..");
+      }
+      printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+    }
+    if((pte&PTE_V)&&(pte&(PTE_R|PTE_W|PTE_X)))
+    {
+      pagetable_t next_pagetable = PTE2PA(pte);
+      recursion_print(next_pagetable,level+1);
+    }  
+  }
+  
+}
+void vmprint(pagetable_t pagetable){
+  printf("page table %x\n",&pagetable);
+  recursion_print(pagetable,1);
+}
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
 // Can only be used to look up user pages.
@@ -239,7 +261,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
-{
+{//oldsz 和 newsz都是地址
   char *mem;
   uint64 a;
 
@@ -255,7 +277,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){//页表分配失败返回-1
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;

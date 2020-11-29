@@ -15,7 +15,7 @@ exec(char *path, char **argv)
   char *s, *last;
   int i, off;
   uint64 argc, sz, sp, ustack[MAXARG+1], stackbase;
-  struct elfhdr elf;
+  struct elfhdr elf;//文件头
   struct inode *ip;
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
@@ -53,7 +53,7 @@ exec(char *path, char **argv)
       goto bad;
     if(ph.vaddr % PGSIZE != 0)
       goto bad;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
+    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)//载入各个段
       goto bad;
   }
   iunlockput(ip);
@@ -66,9 +66,9 @@ exec(char *path, char **argv)
   // Allocate two pages at the next page boundary.
   // Use the second as the user stack.
   sz = PGROUNDUP(sz);
-  if((sz = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+  if((sz = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)//可以把sz看作虚拟地址，表示进程存储的尾部
     goto bad;
-  uvmclear(pagetable, sz-2*PGSIZE);
+  uvmclear(pagetable, sz-2*PGSIZE);//user stack 前两页一页作为保护页，一页作为用户栈，用户不可使用
   sp = sz;
   stackbase = sp - PGSIZE;
 
