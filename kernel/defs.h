@@ -172,7 +172,10 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 void            vmprint(pagetable_t pagetable);
+<<<<<<< HEAD
 int             uvmcheck_guard(pagetable_t pagetable, uint64 va);
+=======
+>>>>>>> 6fd81a97473e1b1f35d99e043290f691cfaa90fc
 
 // plic.c
 void            plicinit(void);
