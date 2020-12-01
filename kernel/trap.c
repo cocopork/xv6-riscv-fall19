@@ -67,12 +67,71 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if(r_scause()==13||r_scause()==15)
+  {//13:page load 15:page store
+    /* mycode */
+    struct proc *p = myproc();
+    uint64 fault_va = r_stval();
+    uint64 a = PGROUNDDOWN(fault_va);
+    if(fault_va>=p->sz){
+      //printf("usertrap(): page fault: invalid memory access to vaddr %p\n", fault_va);
+      p->killed = 1;
+      goto end;
+    }
+    if(fault_va<p->ustack&&fault_va>=p->ustack-PGSIZE){
+      //printf("usertrap(): page fault: segfault on vaddr %p below stack %p\n", fault_va, p->ustack);
+      p->killed = 1;
+      goto end;
+    }
+    if (uvmcheck_guard(p->pagetable,fault_va))
+    {
+      printf("pte can't be accessed\n");
+      p->killed = 1;
+      goto end;      
+    }
+    
+
+    //我的代码
+    char *mem;
+    // for(; a < p->sz; a += PGSIZE){
+    //   mem = kalloc();
+      
+    //   if(mem == 0){
+    //     uvmdealloc(p->pagetable, a, PGROUNDDOWN(fault_va));
+    //     p->killed=1;
+    //     goto end;
+    //   }
+    //   memset(mem, 0, PGSIZE);
+    //   if(mappages(p->pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){//页表分配失败返回-1
+    //     kfree(mem);
+    //     uvmdealloc(p->pagetable, a, PGROUNDDOWN(fault_va));
+    //     p->killed=1;
+    //     goto end;
+    //   }
+    // }
+    mem =kalloc();
+    if (mem==0)
+    {
+      p->killed=1;
+      printf("usertrap(): page fault: no more physical page available, killing process due to a OOM\n");
+      goto end;
+    }
+    memset(mem,0,PGSIZE);
+    if(mappages(p->pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){//页表分配失败返回-1
+      printf("usertrap(): page fault: cannot map a page");
+      kfree(mem);
+      p->killed = 1;
+      goto end;
+    }      
+
+  }
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
-
+end:
   if(p->killed)
     exit(-1);
 

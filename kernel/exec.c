@@ -71,7 +71,8 @@ exec(char *path, char **argv)
   uvmclear(pagetable, sz-2*PGSIZE);//user stack 前两页一页作为保护页，一页作为用户栈，用户不可使用
   sp = sz;
   stackbase = sp - PGSIZE;
-
+  //mycode
+  p->ustack = sp;
   // Push argument strings, prepare rest of stack in ustack.
   for(argc = 0; argv[argc]; argc++) {
     if(argc >= MAXARG)
@@ -82,11 +83,11 @@ exec(char *path, char **argv)
       goto bad;
     if(copyout(pagetable, sp, argv[argc], strlen(argv[argc]) + 1) < 0)
       goto bad;
-    ustack[argc] = sp;
+    ustack[argc] = sp;//保存参数在栈中的首地址
   }
   ustack[argc] = 0;
 
-  // push the array of argv[] pointers.
+  // push the array of argv[] pointers.首地址也压栈
   sp -= (argc+1) * sizeof(uint64);
   sp -= sp % 16;
   if(sp < stackbase)
@@ -104,7 +105,10 @@ exec(char *path, char **argv)
     if(*s == '/')
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
-    
+
+  //打印页表
+  if(p->pid==1) vmprint(pagetable);
+
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;

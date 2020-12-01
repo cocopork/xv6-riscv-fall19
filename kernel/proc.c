@@ -254,7 +254,7 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -264,6 +264,9 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+
+  //mycode
+  np->ustack = p->ustack;
 
   // copy saved user registers.
   *(np->tf) = *(p->tf);
