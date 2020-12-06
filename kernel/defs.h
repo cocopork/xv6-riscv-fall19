@@ -63,7 +63,7 @@ void*           kalloc(void);
 void            kfree(void *);
 void            kinit();
 int pgIndex(void *pa);
-#define PG_NUME 32768
+#define PG_NUME 32723
 extern char ref_count[PG_NUME];
 
 // log.c

@@ -13,7 +13,7 @@ void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
-//mycode
+
 char ref_count[PG_NUME];
 int pgIndex(void *pa){
   int offset = pa-(void*)end;
@@ -62,7 +62,7 @@ kfree(void *pa)
 //mycode
   int index = pgIndex(pa);
   if ((ref_count[index]>1))
-  {//如果还有进程在引用，就相应位置--继续往下走
+  {//如果还有进程在引用，就相应位置减一
     ref_count[index]--;
     return ;
   }
@@ -99,7 +99,7 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
-  return (void*)r;
+  
 
   //在分配的时候先初始化ref_count数组
   if (r)
@@ -107,6 +107,5 @@ kalloc(void)
     int index = pgIndex((void*)r);
     ref_count[index] = 1;
   }
-  
-
+  return (void*)r;
 }

@@ -74,6 +74,7 @@ usertrap(void)
     uint64 va=r_stval();//出错的虚拟地址
     uint64 pa;
     uint flags;
+
     va = PGROUNDDOWN(va);
     pte = walk(p->pagetable,va,0);
     //虚拟地址没有分配物理页或者不是umcopy出的物理页
