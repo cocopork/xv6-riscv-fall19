@@ -67,14 +67,56 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if(r_scause()==15)
+  {//mycode
+    char *mem;
+    pte_t *pte;
+    uint64 va=r_stval();//出错的虚拟地址
+    uint64 pa;
+    uint flags;
+    va = PGROUNDDOWN(va);
+    pte = walk(p->pagetable,va,0);
+    //虚拟地址没有分配物理页或者不是umcopy出的物理页
+    if(pte==0||((*pte)&PTE_COW)==0||((*pte)&PTE_V)==0||((*pte)&PTE_U)==0){
+      printf("usertrap: error pte\n");
+      p->killed = 1;
+      goto err;
+    }
+
+    if((mem = kalloc())==0){
+      printf("usertrap: no memory\n");
+      p->killed = 1;
+      goto err;
+    }
+    
+    pa = PTE2PA(*pte);
+    memmove(mem,(char*)pa,PGSIZE);
+
+    (*pte) |=PTE_W;
+    (*pte)&=~PTE_COW;//当开始要写入的时候，内存已经分离，就不再标记COW
+    flags = PTE_FLAGS(*pte);
+    
+    //该地址之前在父进程已经分配过了，直接mappages会出错，需要重置
+    (*pte)&=~PTE_V;
+    if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, flags) != 0){
+      kfree(mem);
+      goto err;
+    }
+    //物理页已经复制出去了，原来的物理页需要kfree，即ref_count[index]--;
+    kfree((void*)PGROUNDUP(pa));
+    (*pte)|=PTE_V;
+  } 
+   else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
-
-  if(p->killed)
+err:
+  if(p->killed){
+    printf("*****\n");
     exit(-1);
+  }
+    
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)

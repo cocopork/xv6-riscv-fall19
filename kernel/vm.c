@@ -75,7 +75,7 @@ kvminithart()
 //   21..39 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..12 -- 12 bits of byte offset within the page.
-static pte_t *
+pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
@@ -309,6 +309,21 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, 0, sz, 1);
   freewalk(pagetable);
 }
+//复制三级页表
+// int mycopy(pagetable_t old, pagetable_t new,int level){
+//   pagetable_t next_old,next_new;
+//   for (uint64 i = 0; i < 512; i++)
+//   {
+//     new[i] = old[i];
+//     next_new = PTE2PA(new[i]);
+//     next_old = PTE2PA(old[i]);
+//     if (level-1>=0)
+//     {
+//       mycopy(next_old,next_new,level-1);
+//     }
+//   }
+  
+// }
 
 // Given a parent process's page table, copy
 // its memory into a child's page table.
@@ -316,34 +331,82 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+
+void recursion_print(pagetable_t pagetable ,int level){
+  
+  for(int i=0;i<512;i++){
+    pte_t pte = pagetable[i];
+    if(pte&PTE_V){
+      for(int j=0;j<level;j++){
+        printf(" ..");
+      }
+      printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+    }
+    if((pte&PTE_V)&&(pte&(PTE_R|PTE_W|PTE_X)))
+    {
+      uint64 next_pagetable = PTE2PA(pte);
+      recursion_print((pagetable_t)next_pagetable,level+1);
+    }  
+  }
+  
+}
+void vmprint(pagetable_t pagetable){
+  printf("page table %p\n",&pagetable);
+  recursion_print(pagetable,1);
+}
+
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  int index;
+  // char *mem;
 
+  // for(i = 0; i < sz; i += PGSIZE){
+  //   if((pte = walk(old, i, 0)) == 0)
+  //     panic("uvmcopy: pte should exist");
+  //   if((*pte & PTE_V) == 0)
+  //     panic("uvmcopy: page not present");
+  //   pa = PTE2PA(*pte);
+  //   flags = PTE_FLAGS(*pte);
+  //   if((mem = kalloc()) == 0)
+  //     goto err;
+  //   memmove(mem, (char*)pa, PGSIZE);
+  //   if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+  //     kfree(mem);
+  //     goto err;
+  //   }
+  // }
+  // return 0;
+  //mycode
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
+    //修改父进程PTE_W
+    *pte &= ~PTE_W;
+    *pte |= PTE_COW;
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      printf("mappages error\n");
     }
+    // //修改子进程PTE_W
+    // pte = walk(new,i,0);
+    // *pte &= (~PTE_W);   
+    //物理页引用加一
+    index = pgIndex((void*)PTE2PA(*pte));
+    ref_count[index]++;
   }
+  // vmprint(old);
+  // printf("=======================\n");
+  // vmprint(new);
   return 0;
 
- err:
-  uvmunmap(new, 0, i, 1);
-  return -1;
 }
 
 // mark a PTE invalid for user access.
@@ -367,11 +430,50 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
 
-  while(len > 0){
+  // while(len > 0){
+  //   va0 = PGROUNDDOWN(dstva);
+  //   pa0 = walkaddr(pagetable, va0);
+  //   if(pa0 == 0)
+  //     return -1;
+  //   n = PGSIZE - (dstva - va0);
+  //   if(n > len)
+  //     n = len;
+  //   memmove((void *)(pa0 + (dstva - va0)), src, n);
+
+  //   len -= n;
+  //   src += n;
+  //   dstva = va0 + PGSIZE;
+  // }
+  // return 0;
+    while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    pa0 = walkaddr(pagetable, va0);
-    if(pa0 == 0)
+    //首先查到物理页对应的pte
+    pte_t *pte=walk(pagetable,va0,0);
+    if(pte==0||((*pte)&PTE_V)==0||((*pte)&PTE_U)==0){
+      printf("copyout : pte not exist or not accessible to user\n");
       return -1;
+    }
+    pa0=PTE2PA(*pte);
+    //当要写入时，发现当前页是COW页，就得分配新的一页
+    if((*pte)&PTE_COW){
+      char *mem=kalloc();
+      if(mem==0){
+        printf("copyout: out of memory\n");
+        return -1;
+      }
+      memmove(mem,(char *)pa0,PGSIZE);
+      (*pte)|=PTE_W;
+      (*pte)&=~PTE_COW;//当开始要写入的时候，内存已经分离，就不再标记COW
+      int flags = PTE_FLAGS(*pte);
+      (*pte)&=~PTE_V;
+      if(mappages(pagetable, va0, PGSIZE, (uint64)mem, flags) != 0){
+        kfree(mem);
+        return -1;
+      }
+      (*pte)|=PTE_V;
+      pa0=(uint64)mem;
+    }
+
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
