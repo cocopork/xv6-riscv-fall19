@@ -257,16 +257,14 @@ create(char *path, short type, short major, short minor)
     iunlockput(ip);
     return 0;
   }
-
   if((ip = ialloc(dp->dev, type)) == 0)
     panic("create: ialloc");
-
   ilock(ip);
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
   iupdate(ip);
-
+    
   if(type == T_DIR){  // Create . and .. entries.
     dp->nlink++;  // for ".."
     iupdate(dp);
@@ -280,6 +278,34 @@ create(char *path, short type, short major, short minor)
 
   iunlockput(dp);
 
+  return ip;
+}
+
+struct inode* symfollow(struct inode *ip_link)
+{
+  struct inode* ip;
+  int count=0;//避免进入循环
+  while(1)
+  {
+    //下一级连接
+    ip = namei(ip_link->target);
+
+    iunlock(ip_link);
+
+    if (ip==0)
+    {
+      return 0;
+    }
+    ilock(ip);
+    if (ip->type != T_SYMLINK)
+      break;
+    ip_link = ip;
+    count++;
+    if (count>10)
+    {
+      return 0;
+    }
+  }
   return ip;
 }
 
@@ -313,6 +339,14 @@ sys_open(void)
       iunlockput(ip);
       end_op(ROOTDEV);
       return -1;
+    }
+
+    if(ip->type == T_SYMLINK && (omode & O_NOFOLLOW)==0){
+      ip=symfollow(ip);
+      if(ip==0){
+        end_op(ROOTDEV);
+        return -1;
+      }
     }
   }
 
@@ -483,3 +517,59 @@ sys_pipe(void)
   return 0;
 }
 
+//mycode
+int  sys_symlink(void)
+{
+  struct inode *ip;
+  char target[MAXPATH],path[MAXPATH];
+  int m,n;
+  
+  if ((n = argstr(0,target,MAXPATH)) < 0 || (m = argstr(1,path,MAXPATH)) < 0)
+  {
+    return -1;
+  }
+  
+  begin_op(ROOTDEV);
+  ip = create(path,T_SYMLINK,0,0);
+  if (ip==0)
+  {
+    end_op(ROOTDEV);
+    return -1;
+  }
+  
+  int len = strlen(target);
+  if(len>MAXPATH)
+    len = MAXPATH;
+  memset(ip->target,0,MAXPATH);
+  memmove(ip->target,target,len);
+  iunlockput(ip);
+  end_op(ROOTDEV);
+  return 0;
+}
+
+// int 
+// sys_symlink(void){
+//   char target[MAXPATH],path[MAXPATH];
+//   // target,path
+//   // 在path指定的位置，新建一个链接文件，指向target
+//   if((argstr(0,target,MAXPATH)<0)||(argstr(1,path,MAXPATH)<0)){
+//     return -1;
+//   }
+//   struct inode *ip;
+
+//   begin_op(ROOTDEV);
+//   // 返回的ip仍然是上锁的，操作完成后应该解锁
+//   if((ip=(create(path,T_SYMLINK,0,0)))==0){
+//     end_op(ROOTDEV);
+//     return -1;
+//   }
+//   int l=strlen(target);
+//   if(l>MAXPATH){
+//     l=MAXPATH;
+//   }
+//   memset(ip->target,0,MAXPATH);
+//   memmove(ip->target,target,l);
+//   iunlockput(ip);
+//   end_op(ROOTDEV);
+//   return 0;
+// }

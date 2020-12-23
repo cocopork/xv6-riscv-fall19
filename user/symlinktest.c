@@ -45,6 +45,7 @@ static int
 stat_slink(char *pn, struct stat *st)
 {
   int fd = open(pn, O_RDONLY | O_NOFOLLOW);
+  
   if(fd < 0)
     return -1;
   if(fstat(fd, st) != 0)
@@ -68,6 +69,7 @@ testsymlink(void)
   if(fd1 < 0) fail("failed to open a");
 
   r = symlink("/testsymlink/a", "/testsymlink/b");
+  
   if(r < 0)
     fail("symlink b -> a failed");
 
@@ -76,6 +78,7 @@ testsymlink(void)
 
   if (stat_slink("/testsymlink/b", &st) != 0)
     fail("failed to stat b");
+  
   if(st.type != T_SYMLINK)
     fail("b isn't a symlink");
 
@@ -160,7 +163,7 @@ concur(void)
       for(i = 0; i < 100; i++){
         x = x * 1103515245 + 12345;
         if((x % 3) == 0) {
-          symlink("/testsymlink/z", "/testsymlink/y");
+          symlink("/testsymlink/z", "/testsymlink/y");  
           if (stat_slink("/testsymlink/y", &st) == 0) {
             m++;
             if(st.type != T_SYMLINK) {
@@ -175,7 +178,7 @@ concur(void)
       exit(0);
     }
   }
-
+  
   int r;
   for(int j = 0; j < nchild; j++) {
     wait(&r);

@@ -258,10 +258,12 @@ iget(uint dev, uint inum)
     if(empty == 0 && ip->ref == 0)    // Remember empty slot.
       empty = ip;
   }
-
   // Recycle an inode cache entry.
   if(empty == 0)
+  {
+    printf("dev %d,num %d\n",dev,inum);
     panic("iget: no inodes");
+  }
 
   ip = empty;
   ip->dev = dev;
@@ -379,7 +381,7 @@ static uint
 bmap(struct inode *ip, uint bn)
 {
   uint addr, *a;
-  struct buf *bp;
+  struct buf *bp,*bp_1;
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
@@ -401,7 +403,32 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+  //mycode
+  bn -= NINDIRECT;
+  if (bn < NDOUINDIRECT)
+  {//二级索引
+    if((addr = ip->addrs[NDIRECT+1])==0)
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev,addr);
 
+    a = (uint*)bp->data;//第一级
+    uint bn_in_first = bn/NINDIRECT;//bn在一级索引中的位置
+    if ((addr = a[bn_in_first])==0){
+      a[bn_in_first] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    bp_1 = bread(ip->dev,addr);
+
+    a = (uint*)bp_1->data;//第二级
+    uint bn_in_second = bn%NINDIRECT;
+    if ((addr = a[bn_in_second])==0){
+      a[bn_in_second] = addr = balloc(ip->dev);
+      log_write(bp_1);
+    }
+    brelse(bp_1);
+    return addr;
+  }
   panic("bmap: out of range");
 }
 
@@ -413,9 +440,9 @@ bmap(struct inode *ip, uint bn)
 static void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
+  int i, j, k, l;
+  struct buf *bp,*bp_1;
+  uint *a,*a_1;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -434,6 +461,35 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  //二级间接索引释放
+  if (ip->addrs[NDIRECT+1])
+  {
+    bp = bread(ip->dev,ip->addrs[NDIRECT]);
+    a = (uint*)bp->data;
+    //一级表
+    for (k = 0; k < NINDIRECT; k++)
+    {
+      if (a[k])
+      {
+        bp_1 = bread(ip->dev,a[k]);
+        a_1 = (uint*)bp_1->data;
+        //二级表
+        for ( l = 0; l < NINDIRECT; l++)
+        {
+          if (a_1[l])//应该释放的是bp_1->dev的，而不是ip->dev的
+            //bfree(ip->dev, a[l]);
+            bfree(bp_1->dev,a_1[l]);
+        }
+        brelse(bp_1);
+        //应该释放的是bp_1->dev的，而不是ip->dev的
+        bfree(bp->dev,a[k]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev,ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
   }
 
   ip->size = 0;
@@ -630,12 +686,10 @@ static struct inode*
 namex(char *path, int nameiparent, char *name)
 {
   struct inode *ip, *next;
-
   if(*path == '/')
-    ip = iget(ROOTDEV, ROOTINO);
+      ip = iget(ROOTDEV, ROOTINO);
   else
     ip = idup(myproc()->cwd);
-
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
     if(ip->type != T_DIR){
@@ -658,6 +712,7 @@ namex(char *path, int nameiparent, char *name)
     iput(ip);
     return 0;
   }
+  
   return ip;
 }
 
