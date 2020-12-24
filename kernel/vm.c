@@ -16,7 +16,7 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
-void vmprint(pagetable_t pagetable);
+void vmprint(pagetable_t *pagetable);
 
 /*
  * create a direct-map page table for the kernel and
@@ -97,6 +97,10 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 }
 
 void recursion_print(pagetable_t pagetable ,int level){
+  if (level>3)
+  {
+    return;
+  }
   
   for(int i=0;i<512;i++){
     pte_t pte = pagetable[i];
@@ -105,18 +109,24 @@ void recursion_print(pagetable_t pagetable ,int level){
         printf(" ..");
       }
       printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+      if (level<3)
+      {
+        uint64 next_pagetable = PTE2PA(pte);
+        recursion_print((pagetable_t)next_pagetable,level+1);
+      }
+      if(level==3&&(pte&(PTE_R|PTE_W|PTE_X)))
+      {
+        uint64 next_pagetable = PTE2PA(pte);
+        recursion_print((pagetable_t)next_pagetable,level+1);
+      } 
     }
-    if((pte&PTE_V)&&(pte&(PTE_R|PTE_W|PTE_X)))
-    {
-      uint64 next_pagetable = PTE2PA(pte);
-      recursion_print((pagetable_t)next_pagetable,level+1);
-    }  
+ 
   }
   
 }
-void vmprint(pagetable_t pagetable){
-  printf("page table %p\n",&pagetable);
-  recursion_print(pagetable,1);
+void vmprint(pagetable_t *pagetable){
+  printf("page table %p\n",*pagetable);
+  recursion_print(*pagetable,1);
 }
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.
