@@ -128,8 +128,8 @@ void handle(char *cmd){
     char *p;
     
     char *bufArgsPointer;
-    int inputRedirIndex=0;
-    int outputRedirIndex=0;
+    int inputRedirIndex=0;//输入重定向
+    int outputRedirIndex=0;//输出重定向
     
     char *argToPass[ARGSIZE];
     int argcPassNum = 0;
