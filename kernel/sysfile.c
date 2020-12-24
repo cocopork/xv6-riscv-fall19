@@ -483,3 +483,135 @@ sys_pipe(void)
   return 0;
 }
 
+//mycode
+uint64 sys_mmap(void)
+{
+  uint64 addr;
+  int length;
+  int prot;
+  int flags;
+  int fd;
+  uint64 offset;
+
+  //传参只能通过arg
+  argaddr(0,&addr);
+  argint(1,&length);
+  argint(2,&prot);
+  argint(3,&flags);
+  argint(4,&fd);
+  argaddr(5,&offset);
+
+  struct proc *p = myproc();
+  struct file *f = p->ofile[fd];
+  //检查源文件是否可写
+  if (flags&MAP_SHARED)
+  {
+    if (!(f->writable)&&((prot&PROT_WRITE)!=0))
+    {
+      printf("target file is unwritable\n");
+      return 0xffffffffffffffff;
+    }
+  } 
+
+  //在VMA list 中查找空闲VMA
+  mmap_info_t *vma = 0;
+  for (int i = 0; i < 30; i++)
+  {
+    if (p->VMAlist[i].valid==0)
+    {
+      vma = &(p->VMAlist[i]);
+      break;
+    }
+  }
+  
+  if (vma)
+  {
+    
+    vma->valid = 1;
+    vma->end = p->curheaptop;
+    // printf(">%p\n",p->curheaptop);
+    // printf(">%p\n",vma->end);
+    vma->start = PGROUNDDOWN(p->curheaptop-length);//分配空间要页对其，所以要往下一点点预留出多余空间
+    p->curheaptop = vma->start;//注意同时修改堆顶
+
+    vma->size = length;
+    vma->prot = prot;
+    vma->flags = flags;
+    vma->offset = offset;
+    vma->file = f;
+    vma->file->ref++;
+    vma->fd = fd;
+    return vma->start;
+  }
+  
+  return 0xffffffffffffffff;
+}
+
+uint64 sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+  argaddr(0,&addr);
+  argint(1,&length);
+  //寻找对应vma
+  struct proc *p = myproc();
+  mmap_info_t *vma = 0;
+  uint64 start = PGROUNDDOWN(addr);
+  uint64 end = PGROUNDDOWN(addr+length);
+  for (int i = 0; i < VMASIZE; i++)
+  {
+    if ((p->VMAlist[i].valid==1)&&
+          (start>=p->VMAlist[i].start)&&
+          (end<=p->VMAlist[i].end))
+    {
+      vma = &(p->VMAlist[i]);
+      break;
+    }
+  }
+  if (!vma)
+  {
+    printf("space to be free is not in a complete vma\n");
+    return -1;
+  }
+  //若为MAP_SHARED还要写回
+  if (vma->flags&MAP_SHARED)
+  {
+    struct file *f = vma->file;
+    begin_op(f->ip->dev);
+    ilock(f->ip);
+    writei(f->ip,1,vma->start,vma->offset,length);
+    iunlock(f->ip);
+    end_op(f->ip->dev);
+    //plan B
+    //filewrite(f,addr,length);
+  }
+  pte_t *pte;
+  for (uint64 i = addr; i < addr+length; i+=PGSIZE)
+  {
+    if ((pte = walk(p->pagetable,i,0))!=0)
+    {
+      if (*pte &PTE_V)
+        //只释放本进程中的pagetable，并不释放内存因为其他进程可能还在用
+        uvmunmap(p->pagetable,i,PGSIZE,0);
+    }
+  }
+  //文件有三种释放情况，要么释放全部，要么释放头部，要么释放尾部
+  //注意两头位置要页对其
+  if (vma->start==start&&vma->end==end)
+  {
+    vma->valid = 0;
+    vma->file->ref--;
+    vma->size = 0;
+  }
+  else if(vma->start==start&&end<vma->end)
+  {
+    vma->size -= length;
+    vma->start = end;
+  }
+  else if(vma->start<start&&vma->end==end)
+  {
+    vma->size -= length;
+    vma->end = start-1;
+  }
+  return 0;
+}

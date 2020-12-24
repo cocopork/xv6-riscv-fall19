@@ -26,6 +26,21 @@ struct cpu {
   int intena;                 // Were interrupts enabled before push_off()?
 };
 
+//mycode
+typedef struct mmap_info
+{
+  uint16 valid;       //有效标志
+  uint64 start;       //开始地址，下边界
+  uint64 end;         //结束地址，上边界，文件长度不一定等于分配地址长度的，要页对其
+  int size;           //长度
+  char  prot;  //内容读写许可
+  int  flags;        //映射类型shared或private
+  struct file *file;  //文件
+  uint32 offset;      //文件偏移
+  int fd;             //文件句柄
+}mmap_info_t;
+
+
 extern struct cpu cpus[NCPU];
 
 // per-process data for the trap handling code in trampoline.S.
@@ -81,7 +96,7 @@ struct trapframe {
 };
 
 enum procstate { UNUSED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
-
+#define VMASIZE     30
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -103,4 +118,7 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  //mycode
+  mmap_info_t VMAlist[VMASIZE];        //VMA
+  uint64 curheaptop;           //当前堆顶
 };

@@ -5,7 +5,18 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "fcntl.h"
+struct file {
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
+  int ref; // reference count
+  char readable;
+  char writable;
+  struct pipe *pipe; // FD_PIPE
+  struct inode *ip;  // FD_INODE and FD_DEVICE
+  uint off;          // FD_INODE and FD_DEVICE
+  short major;       // FD_DEVICE
+  short minor;       // FD_DEVICE
+};
 struct spinlock tickslock;
 uint ticks;
 
@@ -70,12 +81,59 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } 
+  else if (r_scause()==13||r_scause()==15){
+    //缺页
+    uint64 va = r_stval();
+    mmap_info_t *vma = 0;
+    for (int i = 0; i < VMASIZE; i++)
+    {
+      // printf("NO.%d >> %d %p %p\n",i,p->VMAlist[i].valid,p->VMAlist[i].start,p->VMAlist[i].end);
+      // printf("   %d %p %p \n",(p->VMAlist[i].end)==(MAXVA - PGSIZE*2),(MAXVA - PGSIZE*2),p->VMAlist[i].end);
+      if ((p->VMAlist[i].valid==1)&&
+            (va>=p->VMAlist[i].start)&&
+            (va<=p->VMAlist[i].end))
+      {
+        vma = &(p->VMAlist[i]);
+        break;
+      }
+    }
+
+    if (!vma)
+    {
+      //printf("no such vma list\n");
+      p->killed = 1;
+      goto err;
+    }
+    char *pa;
+    if ((pa = kalloc())==0)
+      panic("kalloc");
+    memset(pa,0,PGSIZE);
+    uint64 va_align = PGROUNDDOWN(va);
+    //添加到用户页表
+    
+    if (mappages(p->pagetable,va_align,PGSIZE,(uint64)pa,vma->prot|PTE_U)!=0)
+    {
+      kfree(pa);
+      p->killed = 1;
+      goto err;
+    }
+    //将文件中相应的页读到虚拟地址对应位置
+    int off = va_align - vma->start;//偏移位置就从最开始到出错位置
+    struct file *f = vma->file;
+
+    ilock(f->ip);
+    readi(f->ip,1,va_align,off,PGSIZE);
+    iunlock(f->ip);
+
+  }
+  else {
     printf("usertrap(): unexpected scause %p (%s) pid=%d\n", r_scause(), scause_desc(r_scause()), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;
   }
 
+err:
   if(p->killed)
     exit(-1);
 

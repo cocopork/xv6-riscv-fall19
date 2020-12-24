@@ -128,7 +128,6 @@ mmap_test(void)
     p[i] = 'Z';
   if (munmap(p, PGSIZE*2) == -1)
     err("munmap (2)");
-
   // check that mmap doesn't allow read/write mapping of a
   // file opened read-only.
   if ((fd = open(f, O_RDONLY)) == -1)

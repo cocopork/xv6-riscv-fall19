@@ -28,6 +28,10 @@ int crash(const char*, int);
 int mount(char*, char *);
 int umount(char*);
 
+//mycode
+void* mmap(void *addr, uint32 length, int prot, int flags,int fd, uint64 offset);
+int munmap(void *addr,uint32 length);
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);

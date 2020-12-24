@@ -41,6 +41,7 @@ procinit(void)
       uint64 va = KSTACK((int) (p - proc));
       kvmmap(va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
       p->kstack = va;
+      p->curheaptop = MAXVA - PGSIZE*2;
   }
   kvminithart();
 }
@@ -283,6 +284,30 @@ fork(void)
 
   np->state = RUNNABLE;
 
+  //mycode
+  mmap_info_t *vma = 0,*npvma = 0;
+  
+  for (int i = 0; i < VMASIZE; i++)
+  {
+    if(p->VMAlist[i].valid==1)
+    {
+      vma = &(p->VMAlist[i]);
+      npvma = &(np->VMAlist[i]);
+      npvma->valid = 1;
+      npvma->start = vma->start;
+      npvma->end = vma->end;
+      npvma->size = vma->size;
+      npvma->prot = vma->prot;
+      npvma->flags = vma->flags;
+      npvma->file = vma->file;
+      npvma->offset = vma->offset;
+      npvma->fd = vma->fd;
+      npvma->file->ref++;
+      npvma->file = np->ofile[npvma->fd];
+    }
+  }
+  
+
   release(&np->lock);
 
   return pid;
@@ -314,6 +339,21 @@ reparent(struct proc *p)
   }
 }
 
+//mycode
+void freevma(pagetable_t pagetable,uint64 start,uint64 end)
+{
+  pte_t *pte;
+  for (uint64 i = start; i < end; i+=PGSIZE)
+  {
+    if ((pte = walk(pagetable,i,0))!=0)
+    {
+      if (*pte&PTE_V)
+        uvmunmap(pagetable,i,PGSIZE,0);
+    }
+  }
+  
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
@@ -331,6 +371,18 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  //mycode
+  mmap_info_t *vma = 0;
+  for (int i = 0; i < VMASIZE; i++)
+  {
+    if(p->VMAlist[i].valid==1)
+    {
+      vma = &(p->VMAlist[i]);
+      freevma(p->pagetable,vma->start,vma->end);
+      vma->valid = 0;
     }
   }
 

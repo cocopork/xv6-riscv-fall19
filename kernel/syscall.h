@@ -23,3 +23,7 @@
 
 // System calls for labs
 #define SYS_ntas   22
+
+//mycode
+#define SYS_mmap   23
+#define SYS_munmap 24
