@@ -280,7 +280,7 @@ create(char *path, short type, short major, short minor)
 
   return ip;
 }
-
+//进入链接地址
 struct inode* symfollow(struct inode *ip_link)
 {
   struct inode* ip;
